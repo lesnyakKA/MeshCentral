@@ -54,6 +54,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
     obj.interceptor = require('./interceptor');
     obj.uaparser = require('ua-parser-js');
     obj.uaclienthints = require('ua-client-hints-js');
+    const rabbit = require('./rabbit');
     const constants = (obj.crypto.constants ? obj.crypto.constants : require('constants')); // require('constants') is deprecated in Node 11.10, use require('crypto').constants instead.
 
     // Setup WebAuthn / FIDO2
@@ -62,6 +63,8 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
     if (process.env['HTTP_PROXY'] || process.env['HTTPS_PROXY'] || process.env['http_proxy'] || process.env['https_proxy']) {
         obj.httpsProxyAgent = new (require('https-proxy-agent').HttpsProxyAgent)(process.env['HTTP_PROXY'] || process.env['HTTPS_PROXY'] || process.env['http_proxy'] || process.env['https_proxy']);
     }
+
+
 
     // Variables
     obj.args = args;
@@ -129,6 +132,36 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
         }
         return null;
     }
+
+    obj.app.post('/api/device-task', obj.bodyParser.json(), async function (req, res) {
+        try {
+            if (!req.session || !req.session.userid) {
+                res.status(401).json({ ok: false, error: 'unauthorized' });
+                return;
+            }
+
+            const uuid = (req.body.uuid || '').trim();
+            const key = (req.body.key || '').trim();
+
+            if (!uuid || !key) {
+                res.status(400).json({ ok: false, error: 'uuid and key are required' });
+                return;
+            }
+
+            const payload = {
+                uuid: uuid,
+                key: key,
+                ts: Date.now()
+            };
+
+            await rabbit.sendDeviceTask(payload);
+
+            res.json({ ok: true, payload: payload });
+        } catch (e) {
+            console.error('Failed to send task to Rabbit:', e);
+            res.status(500).json({ ok: false, error: 'rabbit send failed' });
+        }
+    });
 
     // Web relay sessions
     var webRelayNextSessionId = 1;
