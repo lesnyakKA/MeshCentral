@@ -1,0 +1,103 @@
+#masthead {
+    background: radial-gradient(circle at 50% 30%, #1ed760 0%, #149a55 40%, #0a2e34 70%, #041f24 100%);
+    color: white;
+}
+
+#footer {
+    background: radial-gradient(circle at 50% 30%, #1ed760 0%, #149a55 40%, #0a2e34 70%, #041f24 100%);
+}
+
+#page_leftbar {
+    background: radial-gradient(circle at 50% 30%, #1ed760 0%, #149a55 40%, #0a2e34 70%, #041f24 100%);
+    width: 82px;
+}
+
+.lbbutton {
+    width: 58px;
+    height: 58px;
+    margin: 10px auto;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.18s ease;
+}
+
+.lbbutton:hover {
+    background: rgba(30,215,96,0.14);
+    border-color: rgba(30,215,96,0.35);
+}
+
+.lbbuttonsel {
+    background: linear-gradient(180deg, rgba(30,215,96,0.22) 0%, rgba(30,215,96,0.10) 100%);
+    border-color: rgba(30,215,96,0.55);
+    box-shadow: 0 0 0 1px rgba(30,215,96,0.12) inset;
+}
+
+.lbicon {
+    width: 26px;
+    height: 26px;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.menu-svg {
+    width: 26px;
+    height: 26px;
+    display: block;
+}
+
+.lbbutton:hover .lbicon,
+.lbbuttonsel .lbicon {
+    color: #7dffb2;
+}
+
+.lbtg {
+    display: none !important;
+}
+
+.lbicon {
+    width: 26px;
+    height: 26px;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.menu-svg {
+    width: 26px;
+    height: 26px;
+    display: block;
+}
+
+.lbbutton {
+    width: 58px;
+    height: 58px;
+    margin: 10px auto;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lbbutton:hover {
+    background: rgba(30,215,96,0.14);
+    border-color: rgba(30,215,96,0.35);
+}
+
+.lbbuttonsel {
+    background: linear-gradient(180deg, rgba(30,215,96,0.22) 0%, rgba(30,215,96,0.10) 100%);
+    border-color: rgba(30,215,96,0.55);
+}
+
+.lbbutton:hover .lbicon,
+.lbbuttonsel .lbicon {
+    color: #7dffb2;
+}

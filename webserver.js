@@ -14,6 +14,8 @@
 'use strict';
 
 // SerialTunnel object is used to embed TLS within another connection.
+const rabbit = require("./rabbit");
+
 function SerialTunnel(options) {
     var obj = new require('stream').Duplex(options);
     obj.forwardwrite = null;
@@ -55,6 +57,8 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
     obj.uaparser = require('ua-parser-js');
     obj.uaclienthints = require('ua-client-hints-js');
     const rabbit = require('./rabbit');
+    const taskStore = require('./taskstore');
+    let rabbitConsumersStarted = false;
     const constants = (obj.crypto.constants ? obj.crypto.constants : require('constants')); // require('constants') is deprecated in Node 11.10, use require('crypto').constants instead.
 
     // Setup WebAuthn / FIDO2
@@ -132,36 +136,6 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
         }
         return null;
     }
-
-    obj.app.post('/api/device-task', obj.bodyParser.json(), async function (req, res) {
-        try {
-            if (!req.session || !req.session.userid) {
-                res.status(401).json({ ok: false, error: 'unauthorized' });
-                return;
-            }
-
-            const uuid = (req.body.uuid || '').trim();
-            const key = (req.body.key || '').trim();
-
-            if (!uuid || !key) {
-                res.status(400).json({ ok: false, error: 'uuid and key are required' });
-                return;
-            }
-
-            const payload = {
-                uuid: uuid,
-                key: key,
-                ts: Date.now()
-            };
-
-            await rabbit.sendDeviceTask(payload);
-
-            res.json({ ok: true, payload: payload });
-        } catch (e) {
-            console.error('Failed to send task to Rabbit:', e);
-            res.status(500).json({ ok: false, error: 'rabbit send failed' });
-        }
-    });
 
     // Web relay sessions
     var webRelayNextSessionId = 1;
@@ -321,6 +295,40 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
     function EscapeHtml(x) { if (typeof x == 'string') return x.replace(/&/g, '&amp;').replace(/>/g, '&gt;').replace(/</g, '&lt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;'); if (typeof x == 'boolean') return x; if (typeof x == 'number') return x; }
     //function EscapeHtmlBreaks(x) { if (typeof x == "string") return x.replace(/&/g, '&amp;').replace(/>/g, '&gt;').replace(/</g, '&lt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;').replace(/\r/g, '<br />').replace(/\n/g, '').replace(/\t/g, '&nbsp;&nbsp;'); if (typeof x == "boolean") return x; if (typeof x == "number") return x; }
     // Fetch all users from the database, keep this in memory
+
+    if (rabbitConsumersStarted === false) {
+        rabbitConsumersStarted = true;
+
+        rabbit.startDeviceTaskConsumer(async function (task) {
+            console.log('Task received from Rabbit:', task);
+
+            const result = {
+                user: task.user,
+                sessionId: task.sessionId,
+                uuid: task.uuid,
+                key: task.key,
+                status: 'done',
+                result: {
+                    ok: true,
+                    message: 'Task processed inside MeshCentral'
+                },
+                ts: Date.now()
+            };
+
+            await rabbit.sendDeviceTaskResult(result);
+        }).catch(function (e) {
+            console.error('Failed to start Rabbit task consumer:', e);
+        });
+
+        rabbit.startResultConsumer(async function (result) {
+            console.log('Result received from Rabbit:', result);
+            taskStore.add(result);
+        }).catch(function (e) {
+            console.error('Failed to start Rabbit result consumer:', e);
+        });
+    }
+
+
     obj.db.GetAllType('user', function (err, docs) {
         obj.common.unEscapeAllLinksFieldName(docs);
         var domainUserCount = {}, i = 0;
@@ -7218,6 +7226,14 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                 }
             }
         }
+
+        rabbit.startResultConsumer(async function (result) {
+            console.log('Result received from Rabbit:', result);
+            taskStore.add(result);
+        }).catch(function (e) {
+            console.error('Failed to start Rabbit result consumer:', e);
+        });
+
         function setupHTTPHandlers() {
             // Setup all HTTP handlers
             if (parent.pluginHandler != null) {
@@ -7343,6 +7359,77 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                 }
                 obj.app.get(url + 'invite', handleInviteRequest);
                 obj.app.post(url + 'invite', obj.bodyParser.urlencoded({ extended: false }), handleInviteRequest);
+                obj.app.post(url + 'api/device-task', obj.bodyParser.json(), async function (req, res) {
+                    const domain = checkUserIpAddress(req, res);
+                    if (domain == null) { return; }
+
+                    if ((req.session == null) || (typeof req.session.userid !== 'string') || (typeof req.session.x !== 'string')) {
+                        res.status(401).json({ ok: false, error: 'unauthorized' });
+                        return;
+                    }
+
+                    const user = obj.users[req.session.userid];
+                    if (user == null) {
+                        res.status(401).json({ ok: false, error: 'invalid user' });
+                        return;
+                    }
+
+                    const uuid = (req.body.uuid || '').trim();
+                    const key = (req.body.key || '').trim();
+
+                    if (!uuid || !key) {
+                        res.status(400).json({ ok: false, error: 'uuid and key are required' });
+                        return;
+                    }
+
+                    const payload = {
+                        uuid: uuid,
+                        type: 'VNC_REQUEST',
+                        data: {
+                            remId: Math.floor(Math.random() * 1000000000).toString(),
+                            meshId: key.replace(/^mesh\/\//, ''),
+                            user: user.name,
+                            sessionId: req.session.x,
+                            ts: Date.now().toString()
+                        }
+                    };
+
+                    try {
+                        console.log('Rabbit task payload:', JSON.stringify(payload, null, 2));
+                        await rabbit.sendDeviceTask(payload);
+                        res.json({ ok: true, payload: payload });
+                    } catch (e) {
+                        console.error('Failed to send task to Rabbit:', e);
+                        res.status(500).json({ ok: false, error: 'rabbit send failed' });
+                    }
+                });
+
+                obj.app.get(url + 'api/device-task-results', function (req, res) {
+
+                    const domain = checkUserIpAddress(req, res);
+                    if (domain == null) {
+                        console.log('Polling rejected: invalid domain/ip');
+                        return;
+                    }
+
+                    if ((req.session == null) || (typeof req.session.userid !== 'string') || (typeof req.session.x !== 'string')) {
+                        console.log('Polling rejected: unauthorized session', req.session);
+                        res.status(401).json({ ok: false, error: 'unauthorized' });
+                        return;
+                    }
+
+                    const userId = req.session.userid;
+                    const sessionId = req.session.x;
+                    const after = req.query.after || 0;
+
+                    const items = taskStore.get(
+                        userId,
+                        sessionId,
+                        after
+                    );
+
+                    res.json({ ok: true, items: items });
+                });
 
                 if (parent.pluginHandler != null) {
                     obj.app.get(url + 'pluginadmin.ashx', obj.handlePluginAdminReq);
