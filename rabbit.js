@@ -70,12 +70,14 @@ async function sendDeviceTaskResult(payload, priority) {
 
 async function startDeviceTaskConsumer(onMessage) {
     const ch = await getChannel();
-
     await ch.consume(TASK_QUEUE, async function (msg) {
         if (!msg) return;
-
         try {
             const data = JSON.parse(msg.content.toString());
+            if (data == null || data.type !== 'VNC_REQUEST') {
+                ch.nack(msg, false, true);
+                return;
+            }
             await onMessage(data);
             ch.ack(msg);
         } catch (e) {
