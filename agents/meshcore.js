@@ -866,6 +866,14 @@ var nextTunnelIndex = 1;
 var apftunnel = null;
 var tunnelUserCount = { terminal: {}, files: {}, tcp: {}, udp: {}, msg: {} }; // List of userid->count sessions for terminal, files and TCP/UDP routing
 
+function getDeviceUuid() {
+    try {
+        var uuid = fs.readFileSync('/etc/device_uuid').toString().trim();
+        if (uuid.length > 0) { return uuid; }
+    } catch (e) { }
+    return null;
+}
+
 // Add to the server event log
 function MeshServerLog(msg, state) {
     if (typeof msg == 'string') { msg = { action: 'log', msg: msg }; } else { msg.action = 'log'; }
@@ -898,6 +906,18 @@ db = require('SimpleDataStore').Shared();
 sha = require('SHA256Stream');
 mesh = require('MeshAgent');
 childProcess = require('child_process');
+
+mesh.on('Connected', function (status) {
+    if (status == 0) return;
+
+    var uuid = getDeviceUuid();
+    if (uuid != null) {
+        mesh.SendCommand({
+            action: 'deviceinfo',
+            uuid: uuid
+        });
+    }
+});
 
 if (mesh.hasKVM == 1) {   // if the agent is compiled with KVM support
     // Check if this computer supports a desktop

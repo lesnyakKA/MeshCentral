@@ -1207,6 +1207,18 @@ module.exports.CreateMeshAgent = function (parent, db, ws, req, args, domain) {
             }
             if (typeof command != 'object') { return; }
             switch (command.action) {
+                case 'deviceinfo':
+                {
+                    if ((typeof command.uuid == 'string') && (command.uuid.length > 0) && (command.uuid.length < 256)) {
+                        if (obj.deviceInfo == null) { obj.deviceInfo = {}; }
+                        obj.deviceInfo.uuid = command.uuid;
+
+                        // Для отладки
+                        parent.parent.debug('agent', 'Device UUID from agent ' + obj.dbNodeKey + ': ' + command.uuid);
+                        console.log('Device UUID from agent ' + obj.dbNodeKey + ': ' + command.uuid);
+                    }
+                    break;
+                }
                 case 'msg':
                     {
                         // If the same console command is processed many times, kick out this agent.

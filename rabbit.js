@@ -5,8 +5,8 @@ const amqp = require('amqplib');
 let connection = null;
 let channel = null;
 
-// const AMQP_URL = process.env.AMQP_URL || 'amqp://rabbit:h1ZIaAUG2nA9oJwNxwsweNcQOqiIaQO5S5JsJKjZJ6LAFkvbqM3EVDx5zlFqQv8@178.249.71.201:9501/%2F';
-const AMQP_URL = process.env.AMQP_URL || 'amqp://start:324012@193.233.231.126:5672/%2F';
+const AMQP_URL = process.env.AMQP_URL || 'amqp://rabbit:h1ZIaAUG2nA9oJwNxwsweNcQOqiIaQO5S5JsJKjZJ6LAFkvbqM3EVDx5zlFqQv8@178.249.71.201:9501/%2F';
+// const AMQP_URL = process.env.AMQP_URL || 'amqp://start:324012@193.233.231.126:5672/%2F';
 
 const TASK_QUEUE = 'kab2hub';
 const RESULT_QUEUE = 'hub2vnc';
