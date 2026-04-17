@@ -7387,12 +7387,20 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         type: 'VNC_REQUEST',
                         data: {
                             remId: Math.floor(Math.random() * 1000000000).toString(),
+                            connect: "true",
                             meshId: key.replace(/^mesh\/\//, ''),
+                            host: "192.168.243.63",
+                            port: 444,
+
                             user: user.name,
                             sessionId: req.session.x,
                             ts: Date.now().toString()
                         }
                     };
+
+                    console.log('Rabbit task payload:', JSON.stringify(payload, null, 2));
+
+                    await rabbit.sendDeviceTask(payload);
 
                     try {
                         console.log('Rabbit task payload:', JSON.stringify(payload, null, 2));
