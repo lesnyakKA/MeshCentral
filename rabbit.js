@@ -106,7 +106,5 @@ async function startResultConsumer(onMessage) {
 
 module.exports = {
     sendDeviceTask,
-    sendDeviceTaskResult,
-    startDeviceTaskConsumer,
     startResultConsumer
 };
