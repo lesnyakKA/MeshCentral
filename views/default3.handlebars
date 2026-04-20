@@ -9940,10 +9940,24 @@
 
         function p10showDeleteNodeDialog(nodeid) {
             if (xxdialogMode) return false;
-            var x = format("Are you sure you want to delete node {0}?", EscapeHtml(currentNode.name)) + '<br /><br /><label><input id=p10check type=checkbox class="form-check-input me-2" onchange=p10validateDeleteNodeDialog() />' + "Confirm" + '</label>';
-            xxdialogButtons = 3; xxdialogTag = nodeid;
+
+            var node = currentNode;
+            if (!node) return false;
+
+            var x = format("Are you sure you want to delete node {0}?", EscapeHtml(node.name)) +
+                    '<br /><br /><label><input id=p10check type=checkbox class="form-check-input me-2" onchange=p10validateDeleteNodeDialog() />' +
+                    "Confirm" + '</label>';
+
+            xxdialogButtons = 3;
+            xxdialogTag = nodeid;
             setModalContent('xxAddAgent', "Delete Node", x);
-            showModal('xxAddAgentModal', 'idx_dlgOkButton', () => p10showDeleteNodeDialogEx(0, nodeid));
+            showModal('xxAddAgentModal', 'idx_dlgOkButton', function () {
+                return p10showDeleteNodeDialogEx(0, {
+                    nodeid: nodeid,
+                    uuid: node.deviceuuid,
+                    meshid: node.meshid
+                });
+            });
             p10validateDeleteNodeDialog();
             return false;
         }
@@ -9952,49 +9966,59 @@
             QE('idx_dlgOkButton', Q('p10check').checked);
         }
 
+        const originalP10showDeleteNodeDialogEx = p10showDeleteNodeDialogEx;
+
         function p10showDeleteNodeDialogEx(b, nodeid) {
             if (b !== 0) return false;
 
-            console.log('DELETE CLICKED', { nodeid: nodeid, currentNode: currentNode });
+            var node = (typeof nodes !== 'undefined' && nodes[nodeid]) ? nodes[nodeid] : currentNode;
+            console.log('DELETE CLICKED', { nodeid: nodeid, node: node });
 
-            if (!currentNode) {
-                alert('currentNode is empty');
+            if (!node) {
+                alert('node is empty');
                 return false;
             }
 
-            if (!currentNode.deviceuuid) {
+            if (!node.deviceuuid) {
                 alert('deviceuuid is missing');
                 return false;
             }
 
-            if (!currentNode.meshid) {
+            if (!node.meshid) {
                 alert('meshid is missing');
                 return false;
             }
 
-            fetch('api/device-task', {
+            fetch('/api/device-task', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 credentials: 'include',
                 body: JSON.stringify({
-                    uuid: currentNode.deviceuuid,
-                    key: currentNode.meshid,
-                    connect: "false"
+                    uuid: node.deviceuuid,
+                    key: node.meshid,
+                    connect: false
                 })
             })
                     .then(function (res) {
                         console.log('DELETE TASK HTTP STATUS', res.status);
-                        return res.json();
+                        return res.json().then(function (data) {
+                            return { ok: res.ok, status: res.status, data: data };
+                        });
                     })
-                    .then(function (data) {
-                        console.log('DELETE TASK RESPONSE', data);
-                        alert(JSON.stringify(data));
+                    .then(function (response) {
+                        console.log('DELETE TASK RESPONSE', response.data);
+
+                        if (response.ok !== true || response.data.ok !== true) {
+                            throw new Error((response.data && response.data.error) ? response.data.error : 'device-task failed');
+                        }
+
+                        return originalP10showDeleteNodeDialogEx(0, nodeid);
                     })
                     .catch(function (err) {
                         console.error('DELETE TASK ERROR', err);
-                        alert('DELETE TASK ERROR');
+                        alert('Disconnect task error: ' + (err && err.message ? err.message : err));
                     });
 
             return false;
