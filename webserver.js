@@ -12005,11 +12005,6 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         return;
                     }
 
-                    if (user == null) {
-                        res.status(401).json({ ok: false, error: 'invalid user' });
-                        return;
-                    }
-
                     const uuid = ((req.body.uuid || '') + '').trim();
                     const key = ((req.body.key || '') + '').trim();
                     const connect = (req.body.connect === false || req.body.connect === 'false') ? 'false' : 'true';
