@@ -6524,12 +6524,34 @@
                             if (item.ts > lastTaskTs) {
                                 lastTaskTs = item.ts;
                             }
+
+                            if (!pendingDeleteNodeId || !pendingDeleteUuid) return;
+                            if (item.uuid !== pendingDeleteUuid) return;
+
+                            if (item.result && item.result.ok === true) {
+                                console.log('disconnect success, removing node:', pendingDeleteNodeId);
+
+                                meshserver.send({
+                                    action: 'removedevices',
+                                    nodeids: [pendingDeleteNodeId]
+                                });
+
+                                pendingDeleteNodeId = null;
+                                pendingDeleteUuid = null;
+                            } else {
+                                console.error('disconnect task failed:', item);
+                                alert('Disconnect task failed');
+
+                                pendingDeleteNodeId = null;
+                                pendingDeleteUuid = null;
+                            }
                         });
                     })
                     .catch(function (err) {
                         console.error('poll failed:', err);
                     });
         }
+
 
         setInterval(pollTaskResults, 2000);
 

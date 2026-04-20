@@ -7360,6 +7360,11 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                 obj.app.get(url + 'invite', handleInviteRequest);
                 obj.app.post(url + 'invite', obj.bodyParser.urlencoded({ extended: false }), handleInviteRequest);
                 obj.app.post(url + 'api/device-task', obj.bodyParser.json(), async function (req, res) {
+                    console.log('API /device-task HIT', {
+                        body: req.body,
+                        session: req.session ? { userid: req.session.userid, x: req.session.x } : null
+                    });
+
                     const domain = checkUserIpAddress(req, res);
                     if (domain == null) { return; }
 
@@ -7376,6 +7381,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
 
                     const uuid = (req.body.uuid || '').trim();
                     const key = (req.body.key || '').trim();
+                    const connect = (req.body.connect === "false") ? "false" : "true";
 
                     if (!uuid || !key) {
                         res.status(400).json({ ok: false, error: 'uuid and key are required' });
@@ -7387,20 +7393,15 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         type: 'VNC_REQUEST',
                         data: {
                             remId: Math.floor(Math.random() * 1000000000).toString(),
-                            connect: "true",
+                            connect: connect,
                             meshId: key.replace(/^mesh\/\//, ''),
                             host: "192.168.243.63",
                             port: 444,
-
                             user: user.name,
                             sessionId: req.session.x,
                             ts: Date.now().toString()
                         }
                     };
-
-                    console.log('Rabbit task payload:', JSON.stringify(payload, null, 2));
-
-                    await rabbit.sendDeviceTask(payload);
 
                     try {
                         console.log('Rabbit task payload:', JSON.stringify(payload, null, 2));
@@ -7413,27 +7414,18 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                 });
 
                 obj.app.get(url + 'api/device-task-results', function (req, res) {
-
                     const domain = checkUserIpAddress(req, res);
-                    if (domain == null) {
-                        console.log('Polling rejected: invalid domain/ip');
-                        return;
-                    }
+                    if (domain == null) { return; }
 
                     if ((req.session == null) || (typeof req.session.userid !== 'string') || (typeof req.session.x !== 'string')) {
-                        console.log('Polling rejected: unauthorized session', req.session);
                         res.status(401).json({ ok: false, error: 'unauthorized' });
                         return;
                     }
 
-                    const userId = req.session.userid;
-                    const sessionId = req.session.x;
-                    const after = req.query.after || 0;
-
                     const items = taskStore.get(
-                        userId,
-                        sessionId,
-                        after
+                        req.session.userid,
+                        req.session.x,
+                        req.query.after || 0
                     );
 
                     res.json({ ok: true, items: items });

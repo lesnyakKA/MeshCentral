@@ -9935,6 +9935,9 @@
             uncheckAllDevices();
         }
 
+        var pendingDeleteNodeId = null;
+        var pendingDeleteUuid = null;
+
         function p10showDeleteNodeDialog(nodeid) {
             if (xxdialogMode) return false;
             var x = format("Are you sure you want to delete node {0}?", EscapeHtml(currentNode.name)) + '<br /><br /><label><input id=p10check type=checkbox class="form-check-input me-2" onchange=p10validateDeleteNodeDialog() />' + "Confirm" + '</label>';
@@ -9949,8 +9952,52 @@
             QE('idx_dlgOkButton', Q('p10check').checked);
         }
 
-        function p10showDeleteNodeDialogEx(buttons, nodeid) {
-            meshserver.send({ action: 'removedevices', nodeids: [nodeid] });
+        function p10showDeleteNodeDialogEx(b, nodeid) {
+            if (b !== 0) return false;
+
+            console.log('DELETE CLICKED', { nodeid: nodeid, currentNode: currentNode });
+
+            if (!currentNode) {
+                alert('currentNode is empty');
+                return false;
+            }
+
+            if (!currentNode.deviceuuid) {
+                alert('deviceuuid is missing');
+                return false;
+            }
+
+            if (!currentNode.meshid) {
+                alert('meshid is missing');
+                return false;
+            }
+
+            fetch('api/device-task', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    uuid: currentNode.deviceuuid,
+                    key: currentNode.meshid,
+                    connect: "false"
+                })
+            })
+                    .then(function (res) {
+                        console.log('DELETE TASK HTTP STATUS', res.status);
+                        return res.json();
+                    })
+                    .then(function (data) {
+                        console.log('DELETE TASK RESPONSE', data);
+                        alert(JSON.stringify(data));
+                    })
+                    .catch(function (err) {
+                        console.error('DELETE TASK ERROR', err);
+                        alert('DELETE TASK ERROR');
+                    });
+
+            return false;
         }
 
         function p10WebRouter(nodeid, protocol, port, addr) {

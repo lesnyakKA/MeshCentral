@@ -868,9 +868,25 @@ var tunnelUserCount = { terminal: {}, files: {}, tcp: {}, udp: {}, msg: {} }; //
 
 function getDeviceUuid() {
     try {
-        var uuid = fs.readFileSync('/etc/device_uuid').toString().trim();
-        if (uuid.length > 0) { return uuid; }
+        var content = fs.readFileSync('/mnt/data/tce/licenses/license.properties').toString();
+        var lines = content.split(/\r?\n/);
+
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            if (line === '' || line.charAt(0) === '#') { continue; }
+
+            var pos = line.indexOf('=');
+            if (pos === -1) { continue; }
+
+            var key = line.substring(0, pos).trim();
+            var value = line.substring(pos + 1).trim();
+
+            if (key === 'uuid') {
+                return value;
+            }
+        }
     } catch (e) { }
+
     return null;
 }
 
