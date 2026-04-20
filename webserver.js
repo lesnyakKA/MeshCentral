@@ -11799,13 +11799,6 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
             }
         }
 
-        rabbit.startResultConsumer(async function (result) {
-            console.log('Result received from Rabbit:', result);
-            taskStore.add(result);
-        }).catch(function (e) {
-            console.error('Failed to start Rabbit result consumer:', e);
-        });
-
         function setupHTTPHandlers() {
             // Setup all HTTP handlers
             if (parent.pluginHandler != null) {
@@ -12027,7 +12020,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     });
 
                     if (pendingRegistered !== true) {
-                        res.status(409).json({ ok: false, error: 'task already pending for this uuid and type' });
+                        res.status(500).json({ ok: false, error: 'failed to register pending task' });
                         return;
                     }
 
@@ -12048,7 +12041,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         await rabbit.sendDeviceTask(payload);
                         res.json({ ok: true, payload: payload });
                     } catch (e) {
-                        taskStore.cancelPending(uuid, 'VNC_REQUEST');
+                        taskStore.cancelPending(uuid, remId);
                         console.error('Failed to send task to Rabbit:', e);
                         res.status(500).json({ ok: false, error: 'rabbit send failed' });
                     }

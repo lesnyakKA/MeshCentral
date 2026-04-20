@@ -1,24 +1,21 @@
 'use strict';
 
 module.exports = function createTaskStore() {
-    const MAX_PENDING_PER_UUID = 20;
-    const MAX_RESULTS_PER_UUID = 100;
+    const MAX_PENDING_PER_UUID = 100;
+    const MAX_RESULTS_PER_SESSION = 100;
     const PENDING_TTL_MS = 5 * 60 * 1000;
 
-    const pendingByUuid = Object.create(null); // uuid -> [pendingTask]
-    const resultsByUuid = Object.create(null); // uuid -> [storedResult]
+    const pendingByUuid = Object.create(null);     // uuid -> [pendingTask]
+    const resultsBySession = Object.create(null);  // userId|sessionId -> [result]
+
+    function makeSessionKey(userId, sessionId) {
+        if (!userId || !sessionId) return null;
+        return userId + '|' + sessionId;
+    }
 
     function normalizeType(type) {
         if (!type) return null;
         return String(type).trim().replace(/-/g, '_').toUpperCase();
-    }
-
-    function mapResultStatus(result) {
-        const value = String(result || '').trim().toUpperCase();
-        if (value === 'ERROR') return 'error';
-        if (value === 'WARNING') return 'warning';
-        if (value === 'SUCCESS') return 'done';
-        return 'done';
     }
 
     function cleanupPending(now) {
@@ -36,168 +33,41 @@ module.exports = function createTaskStore() {
     }
 
     function registerPending(task) {
-        if (!task || !task.uuid || !task.userId || !task.sessionId || !task.type) {
+        if (!task || !task.uuid || !task.remId || !task.userId || !task.sessionId) {
             return false;
         }
 
         cleanupPending();
 
-        const uuid = task.uuid;
-        const type = normalizeType(task.type);
-
-        if (!pendingByUuid[uuid]) {
-            pendingByUuid[uuid] = [];
+        if (!pendingByUuid[task.uuid]) {
+            pendingByUuid[task.uuid] = [];
         }
 
-        const existsSameType = pendingByUuid[uuid].some(function (item) {
-            return normalizeType(item.type) === type;
-        });
-
-        if (existsSameType) {
-            return false;
-        }
-
-        pendingByUuid[uuid].push({
-            uuid: uuid,
-            remId: task.remId || null,
+        pendingByUuid[task.uuid].push({
+            uuid: task.uuid,
+            remId: task.remId,
             userId: task.userId,
             sessionId: task.sessionId,
-            type: type,
+            type: normalizeType(task.type || null),
             ts: task.ts || Date.now()
         });
 
-        if (pendingByUuid[uuid].length > MAX_PENDING_PER_UUID) {
-            pendingByUuid[uuid].shift();
+        if (pendingByUuid[task.uuid].length > MAX_PENDING_PER_UUID) {
+            pendingByUuid[task.uuid].shift();
         }
 
         return true;
     }
 
-    function addResult(message) {
-        if (!message || !message.uuid || !message.data || !Array.isArray(message.data.task_results)) {
+    function cancelPending(uuid, remId) {
+        if (!uuid || !remId || !pendingByUuid[uuid]) {
             return false;
         }
 
-        cleanupPending();
-
-        const uuid = message.uuid;
-        const pendingList = pendingByUuid[uuid];
-        if (!pendingList || pendingList.length === 0) {
-            return false;
-        }
-
-        let accepted = false;
-
-        message.data.task_results.forEach(function (taskResult) {
-            const type = normalizeType(taskResult.task_type);
-            if (!type) {
-                return;
-            }
-
-            const index = pendingList.findIndex(function (item) {
-                return normalizeType(item.type) === type;
-            });
-
-            if (index === -1) {
-                return;
-            }
-
-            const pending = pendingList[index];
-            pendingList.splice(index, 1);
-
-            if (!resultsByUuid[uuid]) {
-                resultsByUuid[uuid] = [];
-            }
-
-            resultsByUuid[uuid].push({
-                uuid: uuid,
-                remId: pending.remId || null,
-                type: type,
-                status: mapResultStatus(taskResult.result),
-                result: {
-                    task_id: taskResult.task_id,
-                    task_type: taskResult.task_type,
-                    result: taskResult.result,
-                    message: taskResult.message || null,
-                    data: taskResult.data || null
-                },
-                userId: pending.userId,
-                sessionId: pending.sessionId,
-                ts: Date.now()
-            });
-
-            if (resultsByUuid[uuid].length > MAX_RESULTS_PER_UUID) {
-                resultsByUuid[uuid].shift();
-            }
-
-            accepted = true;
-        });
-
-        if (pendingList.length === 0) {
-            delete pendingByUuid[uuid];
-        }
-
-        return accepted;
-    }
-
-    function get(userId, sessionId, after) {
-        const afterTs = Number(after) || 0;
-        const out = [];
-
-        for (const uuid in resultsByUuid) {
-            const items = resultsByUuid[uuid];
-
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-
-                if (item.userId !== userId || item.sessionId !== sessionId) {
-                    continue;
-                }
-
-                if (item.ts <= afterTs) {
-                    continue;
-                }
-
-                out.push({
-                    uuid: item.uuid,
-                    remId: item.remId,
-                    type: item.type,
-                    status: item.status,
-                    result: item.result,
-                    ts: item.ts
-                });
-            }
-        }
-
-        out.sort(function (a, b) {
-            return a.ts - b.ts;
-        });
-
-        return out;
-    }
-
-    function clear(userId, sessionId) {
-        for (const uuid in resultsByUuid) {
-            resultsByUuid[uuid] = resultsByUuid[uuid].filter(function (item) {
-                return !(item.userId === userId && item.sessionId === sessionId);
-            });
-
-            if (resultsByUuid[uuid].length === 0) {
-                delete resultsByUuid[uuid];
-            }
-        }
-    }
-
-    function cancelPending(uuid, type) {
-        if (!uuid || !type || !pendingByUuid[uuid]) {
-            return false;
-        }
-
-        const normalizedType = normalizeType(type);
         const originalLength = pendingByUuid[uuid].length;
 
         pendingByUuid[uuid] = pendingByUuid[uuid].filter(function (item) {
-            return normalizeType(item.type) !== normalizedType;
+            return item.remId !== remId;
         });
 
         if (pendingByUuid[uuid].length === 0) {
@@ -205,6 +75,93 @@ module.exports = function createTaskStore() {
         }
 
         return pendingByUuid[uuid] ? pendingByUuid[uuid].length !== originalLength : originalLength > 0;
+    }
+
+    function addResult(message) {
+        if (!message || !message.uuid || !message.data || !message.data.remId) {
+            return false;
+        }
+
+        cleanupPending();
+
+        const uuid = message.uuid;
+        const remId = String(message.data.remId);
+        const resultType = normalizeType(message.data.task || null);
+
+        const pendingList = pendingByUuid[uuid];
+        if (!pendingList || pendingList.length === 0) {
+            return false;
+        }
+
+        const index = pendingList.findIndex(function (item) {
+            return item.remId === remId;
+        });
+
+        if (index === -1) {
+            return false;
+        }
+
+        const pending = pendingList[index];
+        pendingList.splice(index, 1);
+
+        if (pendingList.length === 0) {
+            delete pendingByUuid[uuid];
+        }
+
+        const sessionKey = makeSessionKey(pending.userId, pending.sessionId);
+        if (!sessionKey) {
+            return false;
+        }
+
+        if (!resultsBySession[sessionKey]) {
+            resultsBySession[sessionKey] = [];
+        }
+
+        resultsBySession[sessionKey].push({
+            uuid: uuid,
+            remId: remId,
+            type: resultType || pending.type || null,
+            status: String(message.data.result || 'DONE').toLowerCase(),
+            result: {
+                task: message.data.task || null,
+                remId: remId,
+                result: message.data.result || null,
+                error: message.data.error || null
+            },
+            raw: message,
+            ts: Date.now()
+        });
+
+        if (resultsBySession[sessionKey].length > MAX_RESULTS_PER_SESSION) {
+            resultsBySession[sessionKey].shift();
+        }
+
+        return true;
+    }
+
+    function get(userId, sessionId, after) {
+        const sessionKey = makeSessionKey(userId, sessionId);
+        if (!sessionKey) {
+            return [];
+        }
+
+        const list = resultsBySession[sessionKey] || [];
+        if (!after) {
+            return list.slice();
+        }
+
+        return list.filter(function (item) {
+            return item.ts > after;
+        });
+    }
+
+    function clear(userId, sessionId) {
+        const sessionKey = makeSessionKey(userId, sessionId);
+        if (!sessionKey) {
+            return;
+        }
+
+        delete resultsBySession[sessionKey];
     }
 
     return {
