@@ -3138,6 +3138,14 @@
         }
 
         function onMessage(server, message) {
+            if (message && message.event && message.event.etype === 'node') {
+                console.log('NODE EVENT IN', {
+                    action: message.event.action,
+                    nodeid: message.event.nodeid,
+                    deviceuuid: message.event.node ? (message.event.node.deviceuuid || message.event.node.deviceUuid || message.event.node.uuid || null) : null,
+                    meshid: message.event.node ? (message.event.node.meshid || message.event.node.meshId || null) : null
+                });
+            }
             switch (message.action) {
                 case 'trace': {
                     serverTrace.unshift(message);
@@ -4170,43 +4178,109 @@
                         }
                         case 'addnode': {
                             var node = message.event.node;
+
+                            console.log('EVENT addnode RAW', {
+                                nodeid: message.event.nodeid,
+                                node: node,
+                                deviceuuid: node ? (node.deviceuuid || node.deviceUuid || node.uuid || null) : null,
+                                meshid: node ? (node.meshid || node.meshId || null) : null,
+                                name: node ? node.name : null
+                            });
+
                             if (!meshes[node.meshid]) break; // This is a node for a mesh we don't know. Happens when we are site administrator, we get all messages.
-                            if (getNodeFromId(node._id) != null) break; // This node is already known.
+                            if (getNodeFromId(node._id) != null) {
+                                console.warn('EVENT addnode SKIP ALREADY KNOWN', {
+                                    nodeid: node._id,
+                                    deviceuuid: node.deviceuuid || node.deviceUuid || node.uuid || null
+                                });
+                                break; // This node is already known.
+                            }
+
                             node.namel = node.name.toLowerCase();
-                            if (node.rname) { node.rnamel = node.rname.toLowerCase(); } else { node.rnamel = node.namel; }
+                            if (node.rname) {
+                                node.rnamel = node.rname.toLowerCase();
+                            } else {
+                                node.rnamel = node.namel;
+                            }
                             node.meshnamel = meshes[node.meshid] ? meshes[node.meshid].name.toLowerCase() : '*';
                             node.state = 0;
                             if (!node.icon) node.icon = 1;
                             node.ident = ++nodeShortIdent;
                             if (nodes == null) { }
+
+                            console.log('EVENT addnode BEFORE PUSH', {
+                                nodeid: node._id,
+                                deviceuuid: node.deviceuuid || node.deviceUuid || node.uuid || null,
+                                meshid: node.meshid || null,
+                                keys: Object.keys(node)
+                            });
+
                             nodes.push(node);
+
+                            console.log('EVENT addnode AFTER PUSH', {
+                                nodeid: node._id,
+                                deviceuuid: node.deviceuuid || node.deviceUuid || node.uuid || null,
+                                meshid: node.meshid || null
+                            });
 
                             // Web page update
                             mainUpdate(1 | 2 | 4 | 16);
 
                             // If we are looking at the device group for this device, update that.
-                            if ((xxcurrentView == 20) && (currentMesh != null) && (currentMesh._id == node.meshid)) { mainUpdate(4096); }
+                            if ((xxcurrentView == 20) && (currentMesh != null) && (currentMesh._id == node.meshid)) {
+                                mainUpdate(4096);
+                            }
 
                             break;
                         }
                         case 'removenode': {
+                            console.log('EVENT removenode', {
+                                nodeid: message.event.nodeid,
+                                currentNodeId: currentNode ? currentNode._id : null
+                            });
+
                             var index = -1;
-                            for (var i in nodes) { if (nodes[i]._id == message.event.nodeid) { index = i; break; } }
+                            for (var i in nodes) {
+                                if (nodes[i]._id == message.event.nodeid) {
+                                    index = i;
+                                    break;
+                                }
+                            }
+
                             if (index != -1) {
                                 var node = nodes[index];
+
+                                console.log('EVENT removenode FOUND', {
+                                    nodeid: node._id,
+                                    deviceuuid: node.deviceuuid || node.deviceUuid || node.uuid || null,
+                                    meshid: node.meshid || null,
+                                    name: node.name || null
+                                });
+
                                 if (currentNode == node) {
-                                    if (xxcurrentView >= 10 && xxcurrentView < 20) { setDialogMode(0); go(1); }
+                                    if (xxcurrentView >= 10 && xxcurrentView < 20) {
+                                        setDialogMode(0);
+                                        go(1);
+                                    }
                                     currentNode = null;
                                     // TODO: Correctly disconnect from this node (Desktop/Terminal/Files...)
                                 }
+
                                 nodes.splice(index, 1);
 
                                 // Web page update
                                 mainUpdate(4 | 16);
 
                                 // If we are looking at the device group for this device, update that.
-                                if ((xxcurrentView == 20) && (currentMesh != null) && (currentMesh._id == node.meshid)) { mainUpdate(4096); }
+                                if ((xxcurrentView == 20) && (currentMesh != null) && (currentMesh._id == node.meshid)) {
+                                    mainUpdate(4096);
+                                }
+                            } else {
+                                console.warn('EVENT removenode NOT FOUND', {
+                                    nodeid: message.event.nodeid
+                                });
                             }
+
                             break;
                         }
                         case 'changenode': {
@@ -4214,6 +4288,21 @@
                             for (var i in nodes) { if (nodes[i]._id == message.event.nodeid) { index = i; break; } }
                             if (index != -1) {
                                 var node = nodes[index];
+
+                                var incomingNode = message.event.node || {};
+
+                                console.log('EVENT changenode RAW', {
+                                    nodeid: message.event.nodeid,
+                                    deviceuuid: incomingNode.deviceuuid || incomingNode.deviceUuid || incomingNode.uuid || null,
+                                    meshid: incomingNode.meshid || null,
+                                    name: incomingNode.name || null
+                                });
+
+                                console.log('EVENT changenode BEFORE MERGE', {
+                                    nodeid: node._id,
+                                    oldDeviceUuid: node.deviceuuid || null,
+                                    newDeviceUuid: incomingNode.deviceuuid || incomingNode.deviceUuid || incomingNode.uuid || null
+                                });
 
                                 // Change the node
                                 node.name = message.event.node.name;
@@ -4240,6 +4329,13 @@
                                 node.httpsport = message.event.node.httpsport;
                                 node.consent = message.event.node.consent;
                                 node.pmt = message.event.node.pmt;
+                                if (incomingNode.deviceuuid != null) {
+                                    node.deviceuuid = incomingNode.deviceuuid;
+                                } else if (incomingNode.deviceUuid != null) {
+                                    node.deviceuuid = incomingNode.deviceUuid;
+                                } else if (incomingNode.uuid != null) {
+                                    node.deviceuuid = incomingNode.uuid;
+                                }
                                 if (message.event.node.links != null) { node.links = message.event.node.links; } else { delete node.links; }
                                 if (message.event.node.agent != null) {
                                     if (node.agent == null) node.agent = {};
@@ -4295,6 +4391,12 @@
                                 }
 
                                 // Web page update
+                                console.log('EVENT changenode AFTER MERGE', {
+                                    nodeid: node._id,
+                                    deviceuuid: node.deviceuuid || null,
+                                    meshid: node.meshid || null,
+                                    name: node.name || null
+                                });
                                 updateDeviceViewDevice(node);
                                 mainUpdate(2 | 8 | 16);
                                 refreshDevice(node._id);
@@ -4324,12 +4426,23 @@
                                     // We see the new mesh, move this device
                                     node.meshid = message.event.newMeshId;
                                     node.meshnamel = meshes[message.event.newMeshId] ? meshes[message.event.newMeshId].name.toLowerCase() : '*';
+
+                                    if (message.event.node && message.event.node.deviceuuid && !node.deviceuuid) {
+                                        node.deviceuuid = message.event.node.deviceuuid;
+                                    }
+
                                     mainUpdate(1 | 2 | 4);
                                 }
                                 refreshDevice(message.event.nodeid);
                             } else {
                                 // This is a new device, add it.
                                 var node = message.event.node;
+                                console.log('NODEMESHCHANGE ADD NODE', {
+                                    nodeid: message.event.nodeid,
+                                    node: node,
+                                    deviceuuid: node ? node.deviceuuid : null,
+                                    meshid: node ? node.meshid : null
+                                });
                                 if (!meshes[node.meshid]) break; // This is a node for a mesh we don't know. Happens when we are site administrator, we get all messages.
                                 node.namel = node.name.toLowerCase();
                                 if (node.rname) { node.rnamel = node.rname.toLowerCase(); } else { node.rnamel = node.namel; }
@@ -6507,14 +6620,14 @@
             return false;
         }
 
-        var lastTaskTs = 0;
-
         function pollTaskResults() {
-            fetch('api/device-task-results?after=' + encodeURIComponent(lastTaskTs), {
+            fetch('/api/device-task-results?after=' + encodeURIComponent(lastTaskTs), {
                 method: 'GET',
                 credentials: 'include'
             })
-                    .then(function (res) { return res.json(); })
+                    .then(function (res) {
+                        return res.json();
+                    })
                     .then(function (data) {
                         if (!data.ok || !Array.isArray(data.items)) return;
 
@@ -6525,25 +6638,38 @@
                                 lastTaskTs = item.ts;
                             }
 
-                            if (!pendingDeleteNodeId || !pendingDeleteUuid) return;
+                            if (!pendingDeleteNodeId || !pendingDeleteUuid || !pendingDeleteRemId) return;
                             if (item.uuid !== pendingDeleteUuid) return;
+                            if (item.remId !== pendingDeleteRemId) return;
+                            if (item.type !== 'VNC_REQUEST') return;
 
-                            if (item.result && item.result.ok === true) {
-                                console.log('disconnect success, removing node:', pendingDeleteNodeId);
+                            if (item.status === 'success') {
+                                var nodeid = pendingDeleteNodeId;
 
-                                meshserver.send({
-                                    action: 'removedevices',
-                                    nodeids: [pendingDeleteNodeId]
-                                });
+                                console.log('disconnect success, removing node:', nodeid);
 
                                 pendingDeleteNodeId = null;
                                 pendingDeleteUuid = null;
+                                pendingDeleteMeshid = null;
+                                pendingDeleteRemId = null;
+                                pendingDeleteInProgress = false;
+
+                                return p10deleteNodeNow(0, nodeid);
                             } else {
                                 console.error('disconnect task failed:', item);
-                                alert('Disconnect task failed');
+
+                                var message = 'Disconnect task failed';
+                                if (item.result && item.result.error && item.result.error.message) {
+                                    message += ': ' + item.result.error.message;
+                                }
 
                                 pendingDeleteNodeId = null;
                                 pendingDeleteUuid = null;
+                                pendingDeleteMeshid = null;
+                                pendingDeleteRemId = null;
+                                pendingDeleteInProgress = false;
+
+                                alert(message);
                             }
                         });
                     })
@@ -6551,7 +6677,6 @@
                         console.error('poll failed:', err);
                     });
         }
-
 
         setInterval(pollTaskResults, 2000);
 
@@ -9746,9 +9871,80 @@
             uncheckAllDevices();
         }
 
+        var pendingDeleteNodeId = null;
+        var pendingDeleteUuid = null;
+        var pendingDeleteMeshid = null;
+        var pendingDeleteRemId = null;
+        var pendingDeleteInProgress = false;
+        var pendingConnectInProgress = false;
+        var lastTaskTs = 0;
+
+        function p10resolveDeleteNodeInfo(nodeid) {
+            var node = ((typeof nodes !== 'undefined') && nodes[nodeid]) ? nodes[nodeid] : currentNode;
+            if (!node) return null;
+
+            var uuid =
+                    node.deviceuuid ||
+                    node.deviceUuid ||
+                    node.uuid ||
+                    null;
+
+            var meshid =
+                    node.meshid ||
+                    node.meshId ||
+                    null;
+
+            return {
+                node: node,
+                uuid: uuid,
+                meshid: meshid
+            };
+        }
+
         function p10showDeleteNodeDialog(nodeid) {
             if (xxdialogMode) return false;
-            var x = format("Are you sure you want to delete node {0}?", EscapeHtml(currentNode.name)) + '<br /><br /><label><input id=p10check type=checkbox onchange=p10validateDeleteNodeDialog() />' + "Confirm" + '</label>';
+            if (pendingDeleteInProgress) return false;
+
+            var info = p10resolveDeleteNodeInfo(nodeid);
+            if (!info || !info.node) {
+                alert('node is missing');
+                return false;
+            }
+
+            console.log('DELETE NODE SNAPSHOT', info.node);
+            console.log('DELETE DIALOG OPEN', {
+                nodeid: nodeid,
+                uuid: info.uuid,
+                meshid: info.meshid
+            });
+
+            if (!info.uuid) {
+                console.error('Cannot send disconnect task: uuid is missing', {
+                    nodeid: nodeid,
+                    node: info.node
+                });
+                alert('deviceuuid is missing');
+                return false;
+            }
+
+            if (!info.meshid) {
+                console.error('Cannot send disconnect task: meshid is missing', {
+                    nodeid: nodeid,
+                    node: info.node
+                });
+                alert('meshid is missing');
+                return false;
+            }
+
+            pendingDeleteNodeId = nodeid;
+            pendingDeleteUuid = info.uuid;
+            pendingDeleteMeshid = info.meshid;
+            pendingDeleteRemId = null;
+
+            var x = format("Are you sure you want to delete node {0}?", EscapeHtml(info.node.name)) +
+                    '<br /><br /><label><input id=p10check type=checkbox onchange=p10validateDeleteNodeDialog() />' +
+                    "Confirm" + '</label>';
+
             setDialogMode(2, "Delete Node", 3, p10showDeleteNodeDialogEx, x, nodeid);
             p10validateDeleteNodeDialog();
             return false;
@@ -9759,7 +9955,86 @@
         }
 
         function p10showDeleteNodeDialogEx(buttons, nodeid) {
-            meshserver.send({ action: 'removedevices', nodeids: [nodeid] });
+            if (!pendingDeleteUuid || !pendingDeleteMeshid) {
+                console.error('Delete confirm without pending delete data', {
+                    nodeid: nodeid,
+                    pendingDeleteUuid: pendingDeleteUuid,
+                    pendingDeleteMeshid: pendingDeleteMeshid
+                });
+                alert('disconnect task data is missing');
+                return false;
+            }
+
+            pendingDeleteInProgress = true;
+
+            console.log('DISCONNECT TASK REQUEST', {
+                nodeid: nodeid,
+                uuid: pendingDeleteUuid,
+                meshid: pendingDeleteMeshid,
+                connect: false
+            });
+
+            fetch('/api/device-task', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    uuid: pendingDeleteUuid,
+                    key: pendingDeleteMeshid,
+                    connect: false
+                })
+            })
+                    .then(function (res) {
+                        console.log('DEVICE TASK HTTP STATUS', res.status);
+                        return res.json().then(function (data) {
+                            console.log('DEVICE TASK RESPONSE', data);
+                            return { ok: res.ok, data: data };
+                        });
+                    })
+                    .then(function (response) {
+                        if (response.ok !== true || response.data.ok !== true) {
+                            throw new Error((response.data && response.data.error) ? response.data.error : 'device-task failed');
+                        }
+
+                        pendingDeleteRemId = response.data && response.data.payload && response.data.payload.data
+                                ? response.data.payload.data.remId
+                                : null;
+
+                        console.log('WAIT TASK RESULT BEFORE DELETE', {
+                            nodeid: pendingDeleteNodeId,
+                            uuid: pendingDeleteUuid,
+                            remId: pendingDeleteRemId
+                        });
+
+                        if (!pendingDeleteRemId) {
+                            throw new Error('remId is missing in device-task response');
+                        }
+
+                        return false;
+                    })
+                    .catch(function (err) {
+                        pendingDeleteNodeId = null;
+                        pendingDeleteUuid = null;
+                        pendingDeleteMeshid = null;
+                        pendingDeleteRemId = null;
+                        pendingDeleteInProgress = false;
+
+                        console.error('DELETE TASK ERROR', err);
+                        alert('Disconnect task error: ' + (err && err.message ? err.message : err));
+                    });
+
+            return false;
+        }
+
+        function p10deleteNodeNow(buttons, nodeid) {
+            console.log('SEND REMOVEDEVICES', { nodeid: nodeid });
+
+            meshserver.send({
+                action: 'removedevices',
+                nodeids: [nodeid]
+            });
+
+            return false;
         }
 
         function p10WebRouter(nodeid, protocol, port, addr) {

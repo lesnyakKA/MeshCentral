@@ -4183,9 +4183,41 @@ module.exports.CreateDB = function (parent, func) {
     // Called when a node has changed
     function dbNodeChange(nodeChange, added) {
         if (parent.webserver == null) return;
+
         common.unEscapeLinksFieldName(nodeChange.fullDocument);
         const node = performTypedRecordDecrypt([nodeChange.fullDocument])[0];
-        parent.DispatchEvent(['*', node.meshid], obj, { etype: 'node', action: (added ? 'addnode' : 'changenode'), node: parent.webserver.CloneSafeNode(node), nodeid: node._id, domain: node.domain, nolog: 1 });
+        if (node == null) return;
+
+        // Best-effort enrichment for addnode:
+        // if the DB insert happened before deviceuuid was written,
+        // try to pull UUID from the live connected agent object.
+        if (added === true && !node.deviceuuid) {
+            const liveAgent = parent.webserver.wsagents ? parent.webserver.wsagents[node._id] : null;
+            const liveUuid = (liveAgent && liveAgent.deviceInfo && typeof liveAgent.deviceInfo.uuid === 'string')
+                ? liveAgent.deviceInfo.uuid
+                : null;
+
+            if (liveUuid) {
+                node.deviceuuid = liveUuid;
+                parent.debug('db', 'dbNodeChange addnode enriched with live deviceuuid for ' + node._id + ': ' + liveUuid);
+            } else {
+                parent.debug('db', 'dbNodeChange addnode without deviceuuid for ' + node._id);
+            }
+        }
+
+        const safeNode = parent.webserver.CloneSafeNode(node);
+
+        parent.DispatchEvent(['*', node.meshid], obj, {
+            etype: 'node',
+            action: (added ? 'addnode' : 'changenode'),
+            node: safeNode,
+            nodeid: node._id,
+            domain: node.domain,
+            nolog: 1
+        });
+        parent.debug('db', 'Dispatch node event: action=' + (added ? 'addnode' : 'changenode') +
+            ', nodeid=' + node._id +
+            ', deviceuuid=' + (safeNode.deviceuuid || 'null'));
     }
 
     // Called when a device group has changed

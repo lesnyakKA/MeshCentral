@@ -1538,6 +1538,7 @@ module.exports.CreateMeshAgent = function (parent, db, ws, req, args, domain) {
             if (typeof command != 'object') {
                 return;
             }
+
             switch (command.action) {
                 case 'deviceinfo': {
                     if ((typeof command.uuid == 'string') && (command.uuid.length > 0) && (command.uuid.length < 256)) {
@@ -1555,25 +1556,29 @@ module.exports.CreateMeshAgent = function (parent, db, ws, req, args, domain) {
                             node.deviceuuid = command.uuid;
                             db.Set(node);
 
+                            const safeNode = parent.parent.webserver && parent.parent.webserver.CloneSafeNode
+                                ? parent.parent.webserver.CloneSafeNode(node)
+                                : node;
+
                             parent.parent.DispatchEvent(
-                                parent.CreateMeshDispatchTargets(obj.dbMeshKey, [obj.dbNodeKey]),
+                                ['*', node.meshid, obj.dbNodeKey],
                                 obj,
                                 {
                                     etype: 'node',
                                     action: 'changenode',
                                     nodeid: obj.dbNodeKey,
-                                    node: node,
+                                    node: safeNode,
                                     domain: domain.id,
                                     nolog: 1
                                 }
                             );
 
                             parent.parent.debug('agent', 'Device UUID saved for ' + obj.dbNodeKey + ': ' + command.uuid);
-                            console.log('Device UUID saved for ' + obj.dbNodeKey + ': ' + command.uuid);
                         });
                     }
                     break;
                 }
+
                 case 'msg': {
                     // If the same console command is processed many times, kick out this agent.
                     // This is a safety mesure to guard against the agent DOS'ing the server.
